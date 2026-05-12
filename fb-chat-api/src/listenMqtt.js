@@ -113,14 +113,17 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
     }
   }
   mqttClient.on('error', function(err) {
+    utils.warn("listenMqtt", "MQTT error: " + (err && err.message ? err.message : String(err)));
     stopListening();
     if (ctx.globalOptions.autoReconnect) {
       getSeqID();
     } else {
       globalCallback({ type: "stop_listen", error: "Connection refused: Server unavailable" }, null);
     }
-    utils.warn("Error detected. Will relogin automatically...");
-    api.ws3.relogin();
+    // Only call relogin if ws3 module is present
+    if (api.ws3 && typeof api.ws3.relogin === "function") {
+      api.ws3.relogin();
+    }
     return;
   });
 
@@ -188,7 +191,7 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
       };
       (function() { globalCallback(null, typ); })();
     } else if (topic === "/orca_presence") {
-      if (!ctx.globalOptions.updatePresence) {
+      if (ctx.globalOptions.updatePresence) {
         for (var i in jsonMessage.list) {
           var data = jsonMessage.list[i];
           var userID = data["u"];
@@ -441,6 +444,15 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
         case "magic_words":
         case "messenger_call_log":
         case "participant_joined_group_call":
+        // New Meta event types (2024-2025)
+        case "update_thread_icon":
+        case "group_link_join_request":
+        case "messenger_generic_admin_text":
+        case "change_thread_quick_reaction":
+        case "mt_forward":
+        case "group_invite_link_joined":
+        case "video_call_ended":
+        case "audio_call_ended":
           var fmtMsg;
           try {
             fmtMsg = utils.formatDeltaEvent(v.delta);

@@ -11,11 +11,11 @@ const windowsUserAgent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/
 
 function randomUserAgent() {
     const platform = {
-        platform: ['Windows NT 10.0; Win64; x64', 'Macintosh; Intel Mac OS X 14.7; rv:132.0'],
+        platform: ['Windows NT 10.0; Win64; x64', 'Macintosh; Intel Mac OS X 14_7_1'],
         browsers: {
-            chrome: ['122.0.0.0', '121.0.0.0'],
-            firefox: ['123.0', '122.0'],
-            edge: ['122.0.2365.92']
+            chrome: ['125.0.0.0', '124.0.0.0', '123.0.0.0'],
+            firefox: ['126.0', '125.0', '124.0'],
+            edge: ['125.0.2535.51', '124.0.2478.109']
         }
     };
     const browserName = getRandom(Object.keys(platform.browsers));
@@ -1020,6 +1020,15 @@ function parseAndCheckLogin(ctx, http, retryCount) {
                 }
             }
             if (res.error === 1357001) throw new Error('Facebook blocked login');
+            // Handle Meta warning/suspended/checkpoint responses
+            if (res.error === 1357004) throw new Error('[FCA] Account suspended or disabled by Meta.');
+            if (res.error === 1357031) throw new Error('[FCA] Account is in a warning state. Please review your account on Facebook.');
+            if (res.error === 1357045) throw new Error('[FCA] ID warning: Meta has flagged this account. Login may be restricted.');
+            if (res.error === 368) throw new Error('[FCA] Temporary block: Meta has temporarily restricted this account.');
+            // Detect checkpoint/warning in body
+            if (data.body && (data.body.includes('/checkpoint/block') || data.body.includes('account_disabled'))) {
+                throw new Error('[FCA] Account checkpoint or disabled detected. Appstate may be dead.');
+            }
             return res;
         }
         return _try(any);

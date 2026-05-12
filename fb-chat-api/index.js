@@ -140,9 +140,20 @@ function buildAPI(globalOptions, html, jar) {
 
     try {
         const endpointMatch = html.match(/"endpoint":"([^"]+)"/);
-        if (endpointMatch.input.includes("601051028565049")) {
-          console.log(`lỗi login vì dính tài khoản tự động`);
-          ditconmemay = true;
+        // Detect warning/suspended account patterns from Meta
+        const warningPatterns = [
+            "601051028565049",
+            "/checkpoint/block",
+            "checkpoint_block",
+            "account_disabled",
+            "id_warning",
+            "accountRecovery",
+            "warned_account"
+        ];
+        const isWarningAccount = warningPatterns.some(p => html.includes(p));
+        if (isWarningAccount) {
+            console.log(`[FCA] Warning: Account may be suspended or in checkpoint/warning state.`);
+            global.ditconmemay = true;
         }
         if (endpointMatch) {
             mqttEndpoint = endpointMatch[1].replace(/\\\//g, '/');

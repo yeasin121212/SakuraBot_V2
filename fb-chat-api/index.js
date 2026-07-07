@@ -323,15 +323,15 @@ function buildAPI(globalOptions, html, jar) {
     const originalListenMqtt = require("./src/listenMqtt")(defaultFuncs, api, ctx);
     api.listenMqtt = function(callback) {
         return originalListenMqtt((err, event) => {
-            // Filter out binary MQTT parse errors
-            if (err && err.error && err.error.includes('JSON.parse')) {
-                return;
-            }
-            if (err && err.isBinaryResponse === true) {
-                return;
-            }
-            if (err && err.res && Buffer.isBuffer(err.res)) {
-                return;
+            if (err) {
+                // Filter out binary / JSON parse transient errors (safe string check)
+                var errMsg = (typeof err.error === 'string') ? err.error
+                           : (err.message ? String(err.message) : '');
+                if (errMsg.includes('JSON.parse')) return;
+                if (err.isBinaryResponse === true) return;
+                if (err.res && Buffer.isBuffer(err.res)) return;
+                // Also suppress parse_error type events — these are recoverable
+                if (err.type === 'parse_error') return;
             }
             callback(err, event);
         });

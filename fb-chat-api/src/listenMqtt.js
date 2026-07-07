@@ -140,6 +140,14 @@ function parseDelta(defaultFuncs, api, ctx, globalCallback, v) {
                     fmtMsg.isGroup = !!tk.threadFbId;
                     if (!ctx.threadTypes) ctx.threadTypes = {};
                     ctx.threadTypes[fmtMsg.threadID] = fmtMsg.isSingleUser ? 'dm' : 'group';
+                    // Track E2EE threads so sendMessage can route them correctly
+                    if (fmtMsg.threadID && fmtMsg.threadID.indexOf('@') !== -1) {
+                        if (!ctx.e2eeThreads) ctx.e2eeThreads = {};
+                        ctx.e2eeThreads[fmtMsg.threadID] = true;
+                        // Also map numeric prefix → E2EE so legacy IDs are routed
+                        var _numPfx = fmtMsg.threadID.match(/^(\d+)/);
+                        if (_numPfx) ctx.e2eeThreads[_numPfx[1]] = true;
+                    }
                     if (fmtMsg.attachments && Array.isArray(fmtMsg.attachments)) {
                         fmtMsg.attachments.forEach(att => attachImageUrlToAttachment(api, att));
                     }
@@ -535,13 +543,24 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
     global.mqttClient = ctx.mqttClient;
     var mqttClient = ctx.mqttClient;
 
+    var _reconnectScheduled = false;
+    var _rTimeout = null;
+
+    function _scheduleReconnect(delayMs) {
+        if (_reconnectScheduled) return;
+        _reconnectScheduled = true;
+        if (_rTimeout) { clearTimeout(_rTimeout); _rTimeout = null; }
+        logger.info("MQTT", "🔄 Auto-reconnecting in " + (delayMs / 1000) + "s...");
+        setTimeout(function() { _reconnectScheduled = false; getSeqID(); }, delayMs);
+    }
+
     mqttClient.on('error', err => {
         logger.stopSpinner(false);
         logger.error("MQTT", err.message || err);
-        mqttClient.end();
+        if (_rTimeout) { clearTimeout(_rTimeout); _rTimeout = null; }
+        try { mqttClient.end(); } catch (_) {}
         if (ctx.globalOptions.autoReconnect) {
-            logger.info("MQTT", "🔄 Auto-reconnecting in 3s...");
-            setTimeout(() => getSeqID(), 3000);
+            _scheduleReconnect(3000);
         } else {
             globalCallback({ type: "stop_listen", error: "MQTT connection refused" }, null);
         }
@@ -571,9 +590,9 @@ function listenMqtt(defaultFuncs, api, ctx, globalCallback) {
         }
         mqttClient.publish(topic, JSON.stringify(queue), { qos: 1, retain: false });
 
-        var rTimeout = setTimeout(() => { mqttClient.end(); getSeqID(); }, 5000);
+        _rTimeout = setTimeout(() => { _rTimeout = null; try { mqttClient.end(); } catch(_){} if (!_reconnectScheduled) { _reconnectScheduled = false; getSeqID(); } }, 5000);
         ctx.tmsWait = () => {
-            clearTimeout(rTimeout);
+            if (_rTimeout) { clearTimeout(_rTimeout); _rTimeout = null; }
             if (ctx.globalOptions.emitReady) globalCallback({ type: "ready", error: null }, null);
             delete ctx.tmsWait;
         };
